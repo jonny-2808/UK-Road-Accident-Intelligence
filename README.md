@@ -45,7 +45,7 @@ UK Department for Transport — STATS19 Road Safety Data 2021–2023
 - Source: https://www.data.gov.uk/dataset/road-safety-data
 
 ## Dashboard
-View the live interactive dashboard here: [Power BI Dashboard Link]
+View the live interactive dashboard here : (https://app.powerbi.com/groups/me/reports/0b380fbe-a94d-44a4-a14a-c9ab27a6246b/0d2232e90ab9d465dcf2?experience=power-bi)
 
 ## Repository Contents
 - `queries.sql` — All SQL queries used in the analysis including 
