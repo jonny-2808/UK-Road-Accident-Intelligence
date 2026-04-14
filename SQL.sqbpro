@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="Vehicles_2021_Cleaned.db" readonly="0" foreign_keys="1" case_sensitive_like="0" temp_store="0" wal_autocheckpoint="1000" synchronous="2"/><attached/><window><main_tabs open="structure browser pragmas query" current="3"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="100"/><column_width id="3" width="21869"/><column_width id="4" width="0"/><expanded_item id="0" parent="1"/><expanded_item id="1" parent="1"/><expanded_item id="2" parent="1"/><expanded_item id="3" parent="1"/></tab_structure><tab_browse><table title="collisions" custom_title="0" dock_id="1" table="4,10:maincollisions"/><dock_state state="000000ff00000000fd00000001000000020000037400000344fc0100000001fb000000160064006f0063006b00420072006f00770073006500310100000000000003740000015c00ffffff000003740000000000000004000000040000000800000008fc00000000"/><default_encoding codec=""/><browse_table_settings><table schema="main" name="collisions" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_" freeze_columns="0"><sort/><column_widths><column index="1" value="105"/><column index="2" value="99"/><column index="3" value="70"/><column index="4" value="65"/><column index="5" value="122"/><column index="6" value="139"/><column index="7" value="152"/><column index="8" value="68"/><column index="9" value="92"/><column index="10" value="55"/><column index="11" value="160"/><column index="12" value="75"/><column index="13" value="84"/><column index="14" value="105"/><column index="15" value="115"/><column index="16" value="113"/><column index="17" value="136"/><column index="18" value="170"/><column index="19" value="141"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table></browse_table_settings></tab_browse><tab_sql><sql name="SQL 1*">select collision_severity, count(*) as total
+from collisions
+group by collision_severity
+order by total desc;
+
+
+--urban and rural count  
+SELECT urban_or_rural_area, count(*) as total
+from collisions
+group by urban_or_rural_area;
+
+-- Top 10 local authorities 
+select local_authority_district, count(*) as total
+from collisions
+group by local_authority_district
+order by local_authority_district
+limit 10;
+
+-- Hotspot clustering
+SELECT 
+    ROUND(latitude, 3) as lat_rounded,
+    ROUND(longitude, 3) as lon_rounded,
+    COUNT(*) as total_accidents,
+    SUM(CASE WHEN collision_severity = 1 THEN 3
+             WHEN collision_severity = 2 THEN 2
+             WHEN collision_severity = 3 THEN 1
+             ELSE 0 END) as severity_score,
+    SUM(CASE WHEN collision_severity = 1 THEN 1 ELSE 0 END) as fatal_count,
+    SUM(CASE WHEN collision_severity = 2 THEN 1 ELSE 0 END) as serious_count,
+    SUM(CASE WHEN collision_severity = 3 THEN 1 ELSE 0 END) as slight_count
+FROM collisions
+WHERE latitude IS NOT NULL 
+AND longitude IS NOT NULL
+AND latitude != 0
+AND longitude != 0
+GROUP BY lat_rounded, lon_rounded
+HAVING COUNT(*) &gt;= 3
+ORDER BY severity_score DESC
+LIMIT 20;
+
+-- Sev column values 
+select distinct casualty_severity
+from casualties;
+
+--Hotspot clustering to show conditions of road when accidents occur 
+SELECT 
+    ROUND(latitude, 3) as lat_rounded,
+    ROUND(longitude, 3) as lon_rounded,
+    COUNT(*) as total_accidents,
+    -- Weather breakdown
+    SUM(CASE WHEN weather_conditions = 1 THEN 1 ELSE 0 END) as fine_weather,
+    SUM(CASE WHEN weather_conditions IN (2,3,4,5) THEN 1 ELSE 0 END) as adverse_weather,
+    -- Road surface breakdown
+    SUM(CASE WHEN road_surface_conditions = 1 THEN 1 ELSE 0 END) as dry_road,
+    SUM(CASE WHEN road_surface_conditions IN (2,3,4,5) THEN 1 ELSE 0 END) as adverse_road,
+    -- Light conditions breakdown
+    SUM(CASE WHEN light_conditions = 1 THEN 1 ELSE 0 END) as daylight,
+    SUM(CASE WHEN light_conditions IN (4,5,6,7) THEN 1 ELSE 0 END) as darkness,
+    -- Percentage of accidents in normal conditions
+    ROUND(100.0 * SUM(CASE WHEN weather_conditions = 1 
+        AND road_surface_conditions = 1 
+        AND light_conditions = 1 THEN 1 ELSE 0 END) / COUNT(*), 1) 
+        as pct_normal_conditions
+FROM collisions
+WHERE latitude IS NOT NULL 
+AND longitude IS NOT NULL
+AND latitude != 0 
+AND longitude != 0
+GROUP BY lat_rounded, lon_rounded
+HAVING COUNT(*) &gt;= 3
+ORDER BY total_accidents DESC
+LIMIT 20;
+
+
+--When do these accidents occur ?  
+SELECT 
+    ROUND(latitude, 3) as lat_rounded,
+    ROUND(longitude, 3) as lon_rounded,
+    COUNT(*) as total_accidents,
+    -- Time of day buckets
+    SUM(CASE WHEN CAST(substr(time, 1, 2) AS INTEGER) BETWEEN 7 AND 9 
+        THEN 1 ELSE 0 END) as morning_rush,
+    SUM(CASE WHEN CAST(substr(time, 1, 2) AS INTEGER) BETWEEN 10 AND 16 
+        THEN 1 ELSE 0 END) as daytime,
+    SUM(CASE WHEN CAST(substr(time, 1, 2) AS INTEGER) BETWEEN 17 AND 19 
+        THEN 1 ELSE 0 END) as evening_rush,
+    SUM(CASE WHEN CAST(substr(time, 1, 2) AS INTEGER) &gt;= 20 
+        OR CAST(substr(time, 1, 2) AS INTEGER) &lt;= 6 
+        THEN 1 ELSE 0 END) as night,
+    -- Seasonal breakdown
+    SUM(CASE WHEN CAST(substr(date, 6, 2) AS INTEGER) 
+        IN (11,12,1,2) THEN 1 ELSE 0 END) as winter_months,
+    SUM(CASE WHEN CAST(substr(date, 6, 2) AS INTEGER) 
+        IN (6,7,8) THEN 1 ELSE 0 END) as summer_months
+FROM collisions
+WHERE latitude IS NOT NULL 
+AND longitude IS NOT NULL
+AND latitude != 0 
+AND longitude != 0
+GROUP BY lat_rounded, lon_rounded
+HAVING COUNT(*) &gt;= 3
+ORDER BY total_accidents DESC
+LIMIT 20;
+
+
+-- What type of accidents ?
+
+ SELECT DISTINCT vehicle_manoeuvre 
+FROM vehicles 
+LIMIT 20;
+
+
+
+SELECT 
+    ROUND(c.latitude, 3) as lat_rounded,
+    ROUND(c.longitude, 3) as lon_rounded,
+    COUNT(DISTINCT c.collision_index) as total_accidents,
+    -- Going ahead vs turning vs other
+    SUM(CASE WHEN v.vehicle_manoeuvre = 19 THEN 1 ELSE 0 END) as going_ahead,
+    SUM(CASE WHEN v.vehicle_manoeuvre IN (9,10) THEN 1 ELSE 0 END) as turning_right,
+    SUM(CASE WHEN v.vehicle_manoeuvre IN (7,8) THEN 1 ELSE 0 END) as turning_left,
+    SUM(CASE WHEN v.vehicle_manoeuvre IN (4,3) THEN 1 ELSE 0 END) as slowing_waiting,
+    SUM(CASE WHEN v.vehicle_manoeuvre IN (11,12) THEN 1 ELSE 0 END) as changing_lane,
+    SUM(CASE WHEN v.vehicle_manoeuvre IN (13,14,15) THEN 1 ELSE 0 END) as overtaking,
+    -- Junction location breakdown
+    SUM(CASE WHEN v.junction_location = 0 THEN 1 ELSE 0 END) as not_at_junction,
+    SUM(CASE WHEN v.junction_location IN (1,2,3,4,5,6,7,8) THEN 1 ELSE 0 END) as at_junction
+FROM collisions c
+JOIN vehicles v ON c.collision_index = v.collision_index
+WHERE c.latitude IS NOT NULL 
+AND c.longitude IS NOT NULL
+AND c.latitude != 0 
+AND c.longitude != 0
+GROUP BY lat_rounded, lon_rounded
+HAVING COUNT(DISTINCT c.collision_index) &gt;= 3
+ORDER BY total_accidents DESC
+LIMIT 20;
+
+
+--Master View Table 
+CREATE VIEW master_hotspots AS
+WITH collision_base AS (
+    SELECT 
+        ROUND(latitude, 3) as lat_rounded,
+        ROUND(longitude, 3) as lon_rounded,
+        COUNT(*) as total_accidents,
+        SUM(CASE WHEN collision_severity = 1 THEN 3
+                 WHEN collision_severity = 2 THEN 2
+                 WHEN collision_severity = 3 THEN 1
+                 ELSE 0 END) as severity_score,
+        SUM(CASE WHEN collision_severity = 1 THEN 1 ELSE 0 END) as fatal_count,
+        SUM(CASE WHEN collision_severity = 2 THEN 1 ELSE 0 END) as serious_count,
+        SUM(CASE WHEN collision_severity = 3 THEN 1 ELSE 0 END) as slight_count,
+        ROUND(100.0 * SUM(CASE WHEN weather_conditions = 1 
+            AND road_surface_conditions = 1 
+            AND light_conditions = 1 THEN 1 ELSE 0 END) / COUNT(*), 1) as pct_normal_conditions,
+        SUM(CASE WHEN light_conditions IN (4,5,6,7) THEN 1 ELSE 0 END) as darkness_count,
+        SUM(CASE WHEN CAST(substr(time, 1, 2) AS INTEGER) BETWEEN 7 AND 9 
+            THEN 1 ELSE 0 END) as morning_rush,
+        SUM(CASE WHEN CAST(substr(time, 1, 2) AS INTEGER) BETWEEN 10 AND 16 
+            THEN 1 ELSE 0 END) as daytime,
+        SUM(CASE WHEN CAST(substr(time, 1, 2) AS INTEGER) BETWEEN 17 AND 19 
+            THEN 1 ELSE 0 END) as evening_rush,
+        SUM(CASE WHEN CAST(substr(time, 1, 2) AS INTEGER) &gt;= 20 
+            OR CAST(substr(time, 1, 2) AS INTEGER) &lt;= 6 
+            THEN 1 ELSE 0 END) as night,
+        SUM(CASE WHEN CAST(substr(date, 6, 2) AS INTEGER) 
+            IN (11,12,1,2) THEN 1 ELSE 0 END) as winter_months,
+        SUM(CASE WHEN CAST(substr(date, 6, 2) AS INTEGER) 
+            IN (6,7,8) THEN 1 ELSE 0 END) as summer_months,
+        SUM(CASE WHEN collision_year = 2021 THEN 1 ELSE 0 END) as accidents_2021,
+        SUM(CASE WHEN collision_year = 2022 THEN 1 ELSE 0 END) as accidents_2022,
+        SUM(CASE WHEN collision_year = 2023 THEN 1 ELSE 0 END) as accidents_2023
+    FROM collisions
+    WHERE latitude IS NOT NULL 
+    AND longitude IS NOT NULL
+    AND latitude != 0 
+    AND longitude != 0
+    GROUP BY lat_rounded, lon_rounded
+    HAVING COUNT(*) &gt;= 3
+),
+vehicle_base AS (
+    SELECT 
+        ROUND(c.latitude, 3) as lat_rounded,
+        ROUND(c.longitude, 3) as lon_rounded,
+        SUM(CASE WHEN v.vehicle_manoeuvre = 19 THEN 1 ELSE 0 END) as going_ahead,
+        SUM(CASE WHEN v.vehicle_manoeuvre IN (9,10) THEN 1 ELSE 0 END) as turning_right,
+        SUM(CASE WHEN v.vehicle_manoeuvre IN (7,8) THEN 1 ELSE 0 END) as turning_left,
+        SUM(CASE WHEN v.vehicle_manoeuvre IN (4,3) THEN 1 ELSE 0 END) as slowing_waiting,
+        SUM(CASE WHEN v.junction_location = 0 THEN 1 ELSE 0 END) as not_at_junction,
+        SUM(CASE WHEN v.junction_location IN (1,2,3,4,5,6,7,8) THEN 1 ELSE 0 END) as at_junction
+    FROM collisions c
+    JOIN vehicles v ON c.collision_index = v.collision_index
+    WHERE c.latitude IS NOT NULL 
+    AND c.longitude IS NOT NULL
+    AND c.latitude != 0 
+    AND c.longitude != 0
+    GROUP BY lat_rounded, lon_rounded
+)
+SELECT 
+    cb.*,
+    vb.going_ahead,
+    vb.turning_right,
+    vb.turning_left,
+    vb.slowing_waiting,
+    vb.not_at_junction,
+    vb.at_junction,
+    CASE 
+        WHEN cb.night &gt;= cb.morning_rush AND cb.night &gt;= cb.daytime AND cb.night &gt;= cb.evening_rush THEN 'Night'
+        WHEN cb.evening_rush &gt;= cb.morning_rush AND cb.evening_rush &gt;= cb.daytime THEN 'Evening Rush'
+        WHEN cb.daytime &gt;= cb.morning_rush THEN 'Daytime'
+        ELSE 'Morning Rush'
+    END as dominant_time,
+    CASE
+        WHEN vb.at_junction &gt; vb.not_at_junction AND vb.turning_right &gt; vb.going_ahead THEN 'Junction - Turning Problem'
+        WHEN vb.at_junction &gt; vb.not_at_junction AND cb.pct_normal_conditions &gt; 60 THEN 'Junction - Design Problem'
+        WHEN vb.not_at_junction &gt;= vb.at_junction THEN 'Mid-Road Problem'
+        WHEN vb.slowing_waiting &gt; vb.going_ahead THEN 'Rear-End Queue Problem'
+        ELSE 'Junction - Mixed Causes'
+    END as hotspot_type,
+    CASE
+        WHEN vb.at_junction &gt; vb.not_at_junction AND vb.turning_right &gt; 5 THEN 'Dedicated right-turn signal phase recommended'
+        WHEN cb.darkness_count &gt; cb.total_accidents * 0.4 THEN 'Improved street lighting recommended'
+        WHEN cb.pct_normal_conditions &gt; 60 AND vb.at_junction &gt; vb.not_at_junction THEN 'Junction redesign or improved signage recommended'
+        WHEN vb.not_at_junction &gt;= vb.at_junction THEN 'Speed reduction or road surface treatment recommended'
+        WHEN vb.slowing_waiting &gt; 5 THEN 'Traffic signal retiming or advance warning signs recommended' -- FIXED: was cb.slowing_waiting
+        ELSE 'Further investigation recommended'
+    END as recommendation
+FROM collision_base cb
+JOIN vehicle_base vb ON cb.lat_rounded = vb.lat_rounded 
+AND cb.lon_rounded = vb.lon_rounded
+ORDER BY cb.severity_score DESC;
+
+SELECT COUNT(*) FROM master_hotspots;
+SELECT * FROM master_hotspots LIMIT 5;
+
+
+</sql><current_tab id="0"/></tab_sql></sqlb_project>
